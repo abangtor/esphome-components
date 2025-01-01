@@ -1,7 +1,6 @@
 #include "rest_server.h"
 #include "esphome/core/application.h"
 
-#ifdef USE_WEBSERVER
 #include "esphome/components/json/json_util.h"
 #include "esphome/components/network/util.h"
 #include "esphome/core/application.h"
@@ -65,10 +64,6 @@ RestServer::RestServer(web_server_base::WebServerBase *base)
 #ifdef USE_ESP32
   to_schedule_lock_ = xSemaphoreCreateMutex();
 #endif
-}
-
-void RestServer::handle_index_request(AsyncWebServerRequest *request) {
-  request->send(404);
 }
 
 std::string RestServer::get_config_json() {
@@ -1133,98 +1128,6 @@ std::string RestServer::alarm_control_panel_json(alarm_control_panel::AlarmContr
 }
 #endif
 
-#ifdef USE_EVENT
-void RestServer::handle_event_request(AsyncWebServerRequest *request, const UrlMatch &match) {
-  for (event::Event *obj : App.get_events()) {
-    if (obj->get_object_id() != match.id)
-      continue;
-
-    if (request->method() == HTTP_GET && match.method.empty()) {
-      auto detail = DETAIL_STATE;
-      auto *param = request->getParam("detail");
-      if (param && param->value() == "all") {
-        detail = DETAIL_ALL;
-      }
-      std::string data = this->event_json(obj, "", detail);
-      request->send(200, "application/json", data.c_str());
-      return;
-    }
-  }
-  request->send(404);
-}
-std::string RestServer::event_json(event::Event *obj, const std::string &event_type, JsonDetail start_config) {
-  return json::build_json([this, obj, event_type, start_config](JsonObject root) {
-    set_json_id(root, obj, "event-" + obj->get_object_id(), start_config);
-    if (!event_type.empty()) {
-      root["event_type"] = event_type;
-    }
-    if (start_config == DETAIL_ALL) {
-      JsonArray event_types = root.createNestedArray("event_types");
-      for (auto const &event_type : obj->get_event_types()) {
-        event_types.add(event_type);
-      }
-      root["device_class"] = obj->get_device_class();
-    }
-  });
-}
-#endif
-
-#ifdef USE_UPDATE
-void RestServer::handle_update_request(AsyncWebServerRequest *request, const UrlMatch &match) {
-  for (update::UpdateEntity *obj : App.get_updates()) {
-    if (obj->get_object_id() != match.id)
-      continue;
-
-    if (request->method() == HTTP_GET && match.method.empty()) {
-      auto detail = DETAIL_STATE;
-      auto *param = request->getParam("detail");
-      if (param && param->value() == "all") {
-        detail = DETAIL_ALL;
-      }
-      std::string data = this->update_json(obj, detail);
-      request->send(200, "application/json", data.c_str());
-      return;
-    }
-
-    if (match.method != "install") {
-      request->send(404);
-      return;
-    }
-
-    this->schedule_([obj]() mutable { obj->perform(); });
-    request->send(200);
-    return;
-  }
-  request->send(404);
-}
-std::string RestServer::update_json(update::UpdateEntity *obj, JsonDetail start_config) {
-  return json::build_json([this, obj, start_config](JsonObject root) {
-    set_json_id(root, obj, "update-" + obj->get_object_id(), start_config);
-    root["value"] = obj->update_info.latest_version;
-    switch (obj->state) {
-      case update::UPDATE_STATE_NO_UPDATE:
-        root["state"] = "NO UPDATE";
-        break;
-      case update::UPDATE_STATE_AVAILABLE:
-        root["state"] = "UPDATE AVAILABLE";
-        break;
-      case update::UPDATE_STATE_INSTALLING:
-        root["state"] = "INSTALLING";
-        break;
-      default:
-        root["state"] = "UNKNOWN";
-        break;
-    }
-    if (start_config == DETAIL_ALL) {
-      root["current_version"] = obj->update_info.current_version;
-      root["title"] = obj->update_info.title;
-      root["summary"] = obj->update_info.summary;
-      root["release_url"] = obj->update_info.release_url;
-    }
-  });
-}
-#endif
-
 bool RestServer::canHandle(AsyncWebServerRequest *request) {
   if (request->url() == "/")
     return true;
@@ -1322,24 +1225,9 @@ bool RestServer::canHandle(AsyncWebServerRequest *request) {
     return true;
 #endif
 
-#ifdef USE_EVENT
-  if (request->method() == HTTP_GET && match.domain == "event")
-    return true;
-#endif
-
-#ifdef USE_UPDATE
-  if ((request->method() == HTTP_POST || request->method() == HTTP_GET) && match.domain == "update")
-    return true;
-#endif
-
   return false;
 }
 void RestServer::handleRequest(AsyncWebServerRequest *request) {
-  if (request->url() == "/") {
-    this->handle_index_request(request);
-    return;
-  }
-
   UrlMatch match = match_url(request->url().c_str());
 #ifdef USE_SENSOR
   if (match.domain == "sensor") {
@@ -1469,12 +1357,7 @@ void RestServer::handleRequest(AsyncWebServerRequest *request) {
   }
 #endif
 
-#ifdef USE_UPDATE
-  if (match.domain == "update") {
-    this->handle_update_request(request, match);
-    return;
-  }
-#endif
+  request->send(404);
 }
 
 bool RestServer::isRequestHandlerTrivial() { return false; }
@@ -1491,4 +1374,3 @@ void RestServer::schedule_(std::function<void()> &&f) {
 
 }  // namespace rest_server
 }  // namespace esphome
-#endif
