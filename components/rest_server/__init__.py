@@ -34,17 +34,6 @@ CONFIG_SCHEMA = cv.All(
         {
             cv.GenerateID(): cv.declare_id(RestServer),
             cv.Optional(CONF_PORT, default=80): cv.port,
-            cv.Optional(CONF_ENABLE_PRIVATE_NETWORK_ACCESS, default=True): cv.boolean,
-            cv.Optional(CONF_AUTH): cv.Schema(
-                {
-                    cv.Required(CONF_USERNAME): cv.All(
-                        cv.string_strict, cv.Length(min=1)
-                    ),
-                    cv.Required(CONF_PASSWORD): cv.All(
-                        cv.string_strict, cv.Length(min=1)
-                    ),
-                }
-            ),
             cv.GenerateID(CONF_WEB_SERVER_BASE_ID): cv.use_id(
                 web_server_base.WebServerBase
             ),
