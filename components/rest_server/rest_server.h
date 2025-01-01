@@ -68,9 +68,6 @@ class RestServer : public Controller, public Component, public AsyncWebHandler {
   /// MQTT setup priority.
   float get_setup_priority() const override;
 
-  /// Handle an index request under '/'.
-  void handle_index_request(AsyncWebServerRequest *request);
-
   /// Return the webserver configuration as JSON.
   std::string get_config_json();
 
@@ -217,22 +214,6 @@ class RestServer : public Controller, public Component, public AsyncWebHandler {
   /// Dump the alarm_control_panel state with its value as a JSON string.
   std::string alarm_control_panel_json(alarm_control_panel::AlarmControlPanel *obj,
                                        alarm_control_panel::AlarmControlPanelState value, JsonDetail start_config);
-#endif
-
-#ifdef USE_EVENT
-  /// Handle a event request under '/event<id>'.
-  void handle_event_request(AsyncWebServerRequest *request, const UrlMatch &match);
-
-  /// Dump the event details with its value as a JSON string.
-  std::string event_json(event::Event *obj, const std::string &event_type, JsonDetail start_config);
-#endif
-
-#ifdef USE_UPDATE
-  /// Handle a update request under '/update/<id>'.
-  void handle_update_request(AsyncWebServerRequest *request, const UrlMatch &match);
-
-  /// Dump the update state with its value as a JSON string.
-  std::string update_json(update::UpdateEntity *obj, JsonDetail start_config);
 #endif
 
   /// Override the web handler's canHandle method.
