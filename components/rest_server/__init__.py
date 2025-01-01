@@ -7,22 +7,10 @@ from esphome.components import web_server_base
 from esphome.components.web_server_base import CONF_WEB_SERVER_BASE_ID
 import esphome.config_validation as cv
 from esphome.const import (
-    CONF_AUTH,
-    CONF_CSS_INCLUDE,
-    CONF_CSS_URL,
-    CONF_ENABLE_PRIVATE_NETWORK_ACCESS,
     CONF_ID,
     CONF_INCLUDE_INTERNAL,
-    CONF_JS_INCLUDE,
-    CONF_JS_URL,
-    CONF_LOCAL,
-    CONF_LOG,
     CONF_NAME,
-    CONF_OTA,
-    CONF_PASSWORD,
     CONF_PORT,
-    CONF_USERNAME,
-    CONF_VERSION,
     CONF_WEB_SERVER,
     CONF_WEB_SERVER_ID,
     PLATFORM_BK72XX,
