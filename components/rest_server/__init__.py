@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import gzip
-
 import esphome.codegen as cg
 from esphome.components import web_server_base
 from esphome.components.web_server_base import CONF_WEB_SERVER_BASE_ID
@@ -9,7 +7,6 @@ import esphome.config_validation as cv
 from esphome.const import (
     CONF_ID,
     CONF_INCLUDE_INTERNAL,
-    CONF_NAME,
     CONF_PORT,
     CONF_WEB_SERVER,
     CONF_WEB_SERVER_ID,
@@ -37,15 +34,7 @@ CONFIG_SCHEMA = cv.All(
             cv.GenerateID(CONF_WEB_SERVER_BASE_ID): cv.use_id(
                 web_server_base.WebServerBase
             ),
-            cv.Optional(CONF_INCLUDE_INTERNAL, default=False): cv.boolean,
-            cv.SplitDefault(
-                CONF_OTA,
-                esp8266=True,
-                esp32_arduino=True,
-                esp32_idf=False,
-                bk72xx=True,
-                rtl87xx=True,
-            ): cv.boolean
+            cv.Optional(CONF_INCLUDE_INTERNAL, default=False): cv.boolean
         }
     ).extend(cv.COMPONENT_SCHEMA),
     cv.only_on([PLATFORM_ESP32, PLATFORM_ESP8266, PLATFORM_BK72XX, PLATFORM_RTL87XX]),
@@ -69,6 +58,4 @@ async def to_code(config):
     cg.add(paren.set_port(config[CONF_PORT]))
     cg.add_define("USE_WEBSERVER")
     cg.add_define("USE_WEBSERVER_PORT", config[CONF_PORT])
-    cg.add_define("USE_WEBSERVER_VERSION", 1)
     cg.add(var.set_include_internal(config[CONF_INCLUDE_INTERNAL]))
-    
