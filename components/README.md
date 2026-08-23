@@ -4,6 +4,9 @@ Custom Components
 * *panasonic_ac*  
   https://github.com/DomiStyle/esphome-panasonic-ac
 
+* *horse_run_effect*
+  Addressable light wipe effect with configurable fade window and finish callback.
+
 * *tx_ultimate_touch*  
   https://github.com/abangtor/sonoff-tx-ultimate-for-esphome  
   https://github.com/SmartHome-yourself/sonoff-tx-ultimate-for-esphome
