@@ -6,6 +6,7 @@ import esphome.config_validation as cv
 from esphome.const import CONF_NAME, CONF_UPDATE_INTERVAL
 
 AUTO_LOAD = ["light"]
+CONFIG_SCHEMA = cv.Schema({})
 
 horse_run_effect_ns = cg.esphome_ns.namespace("horse_run_effect")
 HorseRunEffect = horse_run_effect_ns.class_("HorseRunEffect", AddressableLightEffect)

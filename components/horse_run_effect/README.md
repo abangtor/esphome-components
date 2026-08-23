@@ -9,6 +9,8 @@ external_components:
     components:
       - horse_run_effect
 
+horse_run_effect:
+
 light:
   - platform: ...
     effects:
