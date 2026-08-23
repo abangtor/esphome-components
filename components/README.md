@@ -1,14 +1,8 @@
 Custom Components
 =================
 
-* *benq_rs232*  
-  Not finished
-
 * *panasonic_ac*  
   https://github.com/DomiStyle/esphome-panasonic-ac
-
-* *rest_server*  
-  web_server component with only restfull API enabled
 
 * *tx_ultimate_touch*  
   https://github.com/abangtor/sonoff-tx-ultimate-for-esphome  
@@ -31,10 +25,3 @@ Custom Components
 
 * *web_handler*  
   https://github.com/ssieb/esphome_components/tree/master/components/web_handler
-
-* *wifi*  
-  ESPHome wifi component copy
-
-* *wifi_now*  
-  https://github.com/motwok/esphome/tree/wifi_now_component/esphome/components/wifi_now
-  https://deploy-preview-775--esphome.netlify.app/components/wifi_now.html
