@@ -1,56 +1,332 @@
-// tx_ultimate_easy.cpp
-
-#include "esphome/core/log.h"
 #include "tx_ultimate_touch.h"
-#include <string>
+#include "esphome/core/hal.h"
+#include "esphome/core/log.h"
 
 namespace esphome
 {
   namespace tx_ultimate_touch
   {
+    static const char *const TAG = "tx_ultimate_touch";
+
     void TxUltimateTouch::setup()
     {
-      ESP_LOGI("log", "%s", "Tx Ultimate Touch is initialized");
+      this->reset_parser_();
+      ESP_LOGI(TAG, "TX Ultimate touch parser initialized");
     }
 
     void TxUltimateTouch::loop()
     {
-      typeData uart_received_bytes{};
-      bool found = false;
-      int byte   = -1;
-      int i      =  0;
-
-      while( available() )
+      while (this->available())
       {
-        byte = read();
-        if(byte == EN_MAGIC_WORD_BYTE_1) 
-        {
-          handle_touch(uart_received_bytes);
-          i = 0;
-        }
-        if(i < EN_UART_RECEIVED_BYTES_SIZE) 
-        {
-          uart_received_bytes[i] = byte;
-          i++;
-        }
-        if(byte != 0x00)
-          found = true;
+        if (this->parse_byte_(static_cast<uint8_t>(this->read())))
+          this->process_frame_();
       }
-      if (found) handle_touch(uart_received_bytes);
-    }
-
-    void TxUltimateTouch::handle_touch(const typeData& uart_received_bytes)
-    {
-      ESP_LOGV(TAG, "------------");
-      for (int i = 5; i < uart_received_bytes[4] + 5; i++)
-        ESP_LOGV(TAG, "UART - Log - Byte[%i]: %02x", i, uart_received_bytes[i]);
-      if (is_valid_data(uart_received_bytes))
-        send_touch_(get_touch_point(uart_received_bytes));
     }
 
     void TxUltimateTouch::dump_config()
     {
-      ESP_LOGCONFIG(TAG, "Tx Ultimate Touch");
+      ESP_LOGCONFIG(TAG, "TX Ultimate Touch:");
+      ESP_LOGCONFIG(TAG, "  Long press X offset: %u", static_cast<unsigned>(this->long_press_x_offset_));
+      ESP_LOGCONFIG(TAG, "  Long press time triggers: %u", static_cast<unsigned>(this->long_press_time_triggers_.size()));
+      ESP_LOGCONFIG(TAG, "  CRC validation: %s", this->validate_crc_enabled_ ? "enabled" : "disabled");
+      this->check_uart_settings(115200, 1, uart::UART_CONFIG_PARITY_NONE, 8);
+    }
+
+    void TxUltimateTouch::reset_parser_()
+    {
+      this->parser_state_ = ParserState::WAIT_HEADER_1;
+      this->frame_ = Frame{};
+      this->data_read_ = 0;
+    }
+
+    bool TxUltimateTouch::parse_byte_(uint8_t byte)
+    {
+      switch (this->parser_state_)
+      {
+        case ParserState::WAIT_HEADER_1:
+          if (byte == EN_MAGIC_WORD_BYTE_1)
+            this->parser_state_ = ParserState::WAIT_HEADER_2;
+          break;
+
+        case ParserState::WAIT_HEADER_2:
+          if (byte == EN_MAGIC_WORD_BYTE_2)
+          {
+            this->frame_ = Frame{};
+            this->data_read_ = 0;
+            this->parser_state_ = ParserState::VERSION;
+          }
+          else
+          {
+            this->parser_state_ = (byte == EN_MAGIC_WORD_BYTE_1) ? ParserState::WAIT_HEADER_2
+                                                                 : ParserState::WAIT_HEADER_1;
+          }
+          break;
+
+        case ParserState::VERSION:
+          if (byte != EN_DEVICE_VERSION)
+          {
+            ESP_LOGV(TAG, "Ignoring frame with unsupported version 0x%02X", byte);
+            this->parser_state_ = (byte == EN_MAGIC_WORD_BYTE_1) ? ParserState::WAIT_HEADER_2
+                                                                 : ParserState::WAIT_HEADER_1;
+            break;
+          }
+          this->frame_.version = byte;
+          this->parser_state_ = ParserState::OPCODE;
+          break;
+
+        case ParserState::OPCODE:
+          this->frame_.opcode = byte;
+          this->parser_state_ = ParserState::LENGTH;
+          break;
+
+        case ParserState::LENGTH:
+          this->frame_.length = byte;
+          this->data_read_ = 0;
+          if (this->frame_.length > EN_MAX_DATA_LENGTH)
+          {
+            ESP_LOGW(TAG, "Ignoring frame with invalid length %u", this->frame_.length);
+            this->reset_parser_();
+          }
+          else if (this->frame_.length == 0)
+          {
+            this->parser_state_ = ParserState::CRC_HIGH;
+          }
+          else
+          {
+            this->parser_state_ = ParserState::DATA;
+          }
+          break;
+
+        case ParserState::DATA:
+          this->frame_.data[this->data_read_++] = byte;
+          if (this->data_read_ >= this->frame_.length)
+            this->parser_state_ = ParserState::CRC_HIGH;
+          break;
+
+        case ParserState::CRC_HIGH:
+          this->frame_.crc = static_cast<uint16_t>(byte) << 8;
+          this->parser_state_ = ParserState::CRC_LOW;
+          break;
+
+        case ParserState::CRC_LOW:
+          this->frame_.crc |= byte;
+          this->parser_state_ = ParserState::WAIT_HEADER_1;
+          return true;
+      }
+
+      return false;
+    }
+
+    uint16_t TxUltimateTouch::calculate_crc_() const
+    {
+      uint16_t crc = 0xFFFF;
+      auto update_crc = [&crc](uint8_t value)
+      {
+        crc ^= static_cast<uint16_t>(value) << 8;
+        for (uint8_t bit = 0; bit < 8; bit++)
+        {
+          if ((crc & 0x8000) != 0)
+            crc = static_cast<uint16_t>((crc << 1) ^ 0x1021);
+          else
+            crc = static_cast<uint16_t>(crc << 1);
+        }
+      };
+
+      update_crc(this->frame_.version);
+      update_crc(this->frame_.opcode);
+      update_crc(this->frame_.length);
+      for (uint8_t i = 0; i < this->frame_.length; i++)
+        update_crc(this->frame_.data[i]);
+
+      return crc;
+    }
+
+    bool TxUltimateTouch::validate_crc_() const
+    {
+      if (!this->validate_crc_enabled_)
+        return true;
+
+      const uint16_t calculated = this->calculate_crc_();
+      if (calculated != this->frame_.crc)
+      {
+        ESP_LOGW(TAG, "Ignoring frame with invalid CRC: expected 0x%04X, got 0x%04X",
+                 calculated, this->frame_.crc);
+        return false;
+      }
+      return true;
+    }
+
+    bool TxUltimateTouch::decode_touch_frame_(TouchPoint *tp, TouchGesture *gesture) const
+    {
+      if (this->frame_.opcode != EN_OPT_CODE_TOUCH)
+        return false;
+
+      tp->x = 0;
+      tp->state = 0;
+      gesture->from = 0;
+      gesture->to = 0;
+      gesture->distance = 0;
+      gesture->raw_mid = 0;
+      gesture->state = 0;
+
+      switch (this->frame_.length)
+      {
+        case 1:
+          if (this->frame_.data[0] == EN_TOUCH_STATE_MULTI_TOUCH)
+          {
+            tp->state = EN_TOUCH_STATE_MULTI_TOUCH;
+            return true;
+          }
+          if (this->is_valid_position_(this->frame_.data[0]))
+          {
+            tp->x = this->frame_.data[0];
+            tp->state = EN_TOUCH_STATE_RELEASE;
+            return true;
+          }
+          ESP_LOGV(TAG, "Ignoring one-byte touch payload 0x%02X", this->frame_.data[0]);
+          return false;
+
+        case 2:
+          // Known pattern: LEN=2, DATA[0]=0, DATA[1]=position means touch-down.
+          if (this->frame_.data[0] == 0 && this->is_valid_position_(this->frame_.data[1]))
+          {
+            tp->x = this->frame_.data[1];
+            tp->state = EN_TOUCH_STATE_PRESS;
+            return true;
+          }
+          if (this->frame_.data[0] == EN_TOUCH_STATE_RELEASE &&
+              this->frame_.data[1] == EN_TOUCH_STATE_MULTI_TOUCH)
+          {
+            tp->state = EN_TOUCH_STATE_MULTI_TOUCH;
+            return true;
+          }
+          if (this->is_valid_position_(this->frame_.data[0]) &&
+              this->is_valid_position_(this->frame_.data[1]))
+          {
+            tp->x = this->frame_.data[1];
+            tp->state = EN_TOUCH_STATE_RELEASE;
+            gesture->from = this->frame_.data[1];
+            gesture->to = this->frame_.data[0];
+            gesture->distance = gesture->to > gesture->from ? gesture->to - gesture->from : gesture->from - gesture->to;
+            gesture->state = EN_TOUCH_STATE_DASH;
+            return true;
+          }
+          ESP_LOGV(TAG, "Ignoring two-byte touch payload 0x%02X 0x%02X",
+                   this->frame_.data[0], this->frame_.data[1]);
+          return false;
+
+        case 3:
+          if (this->frame_.data[0] == EN_TOUCH_STATE_SWIPE_RIGHT &&
+              this->is_valid_position_(this->frame_.data[1]))
+          {
+            tp->x = this->frame_.data[1];
+            tp->state = EN_TOUCH_STATE_SWIPE_RIGHT;
+            gesture->from = this->frame_.data[1];
+            gesture->to = this->is_valid_position_(this->frame_.data[2]) ? this->frame_.data[2] : 0;
+            gesture->distance = gesture->to > gesture->from ? gesture->to - gesture->from : gesture->from - gesture->to;
+            gesture->raw_mid = this->frame_.data[2];
+            gesture->state = EN_TOUCH_STATE_SWIPE_RIGHT;
+            return true;
+          }
+          if (this->frame_.data[0] == EN_TOUCH_STATE_SWIPE_LEFT &&
+              this->is_valid_position_(this->frame_.data[1]))
+          {
+            tp->x = this->frame_.data[1];
+            tp->state = EN_TOUCH_STATE_SWIPE_LEFT;
+            gesture->from = this->frame_.data[1];
+            gesture->to = this->is_valid_position_(this->frame_.data[2]) ? this->frame_.data[2] : 0;
+            gesture->distance = gesture->to > gesture->from ? gesture->to - gesture->from : gesture->from - gesture->to;
+            gesture->raw_mid = this->frame_.data[2];
+            gesture->state = EN_TOUCH_STATE_SWIPE_LEFT;
+            return true;
+          }
+          if (this->frame_.data[0] == EN_TOUCH_STATE_SWIPE &&
+              this->is_valid_position_(this->frame_.data[2]))
+          {
+            if (this->frame_.data[1] == EN_TOUCH_STATE_SWIPE_RIGHT)
+            {
+              tp->x = this->frame_.data[2];
+              tp->state = EN_TOUCH_STATE_SWIPE_RIGHT;
+              gesture->from = this->frame_.data[2];
+              gesture->state = EN_TOUCH_STATE_SWIPE_RIGHT;
+              return true;
+            }
+            if (this->frame_.data[1] == EN_TOUCH_STATE_SWIPE_LEFT)
+            {
+              tp->x = this->frame_.data[2];
+              tp->state = EN_TOUCH_STATE_SWIPE_LEFT;
+              gesture->from = this->frame_.data[2];
+              gesture->state = EN_TOUCH_STATE_SWIPE_LEFT;
+              return true;
+            }
+          }
+          ESP_LOGV(TAG, "Ignoring three-byte touch payload 0x%02X 0x%02X 0x%02X",
+                   this->frame_.data[0], this->frame_.data[1], this->frame_.data[2]);
+          return false;
+
+        default:
+          ESP_LOGV(TAG, "Ignoring touch frame with unsupported data length %u", this->frame_.length);
+          return false;
+      }
+    }
+
+    bool TxUltimateTouch::is_valid_position_(uint8_t x) const
+    {
+      return x != 0 && x < 0x80;
+    }
+
+    TouchFrame TxUltimateTouch::make_touch_frame_() const
+    {
+      TouchFrame frame;
+      frame.opcode = this->frame_.opcode;
+      frame.length = this->frame_.length;
+      frame.data0 = this->frame_.length > 0 ? this->frame_.data[0] : 0;
+      frame.data1 = this->frame_.length > 1 ? this->frame_.data[1] : 0;
+      frame.data2 = this->frame_.length > 2 ? this->frame_.data[2] : 0;
+      frame.data3 = this->frame_.length > 3 ? this->frame_.data[3] : 0;
+      frame.data4 = this->frame_.length > 4 ? this->frame_.data[4] : 0;
+      frame.data5 = this->frame_.length > 5 ? this->frame_.data[5] : 0;
+      frame.data6 = this->frame_.length > 6 ? this->frame_.data[6] : 0;
+      frame.data7 = this->frame_.length > 7 ? this->frame_.data[7] : 0;
+      frame.crc = this->frame_.crc;
+      return frame;
+    }
+
+    void TxUltimateTouch::send_unknown_frame_()
+    {
+      this->trigger_unknown_frame_.trigger(this->make_touch_frame_());
+    }
+
+    void TxUltimateTouch::process_frame_()
+    {
+      ESP_LOGV(TAG, "Frame opcode=0x%02X length=%u crc=0x%04X",
+               this->frame_.opcode, this->frame_.length, this->frame_.crc);
+
+      if (!this->validate_crc_())
+      {
+        this->send_unknown_frame_();
+        return;
+      }
+
+      if (this->frame_.opcode != EN_OPT_CODE_TOUCH)
+      {
+        ESP_LOGD(TAG, "Ignoring unsupported opcode 0x%02X", this->frame_.opcode);
+        this->send_unknown_frame_();
+        return;
+      }
+
+      TouchPoint tp;
+      TouchGesture gesture;
+      if (this->decode_touch_frame_(&tp, &gesture))
+      {
+        if (gesture.state != 0)
+          this->send_gesture_(gesture);
+        this->send_touch_(tp);
+      }
+      else
+      {
+        this->send_unknown_frame_();
+      }
     }
 
     void TxUltimateTouch::send_touch_(TouchPoint tp)
@@ -59,103 +335,97 @@ namespace esphome
       switch (tp.state)
       {
         case EN_TOUCH_STATE_RELEASE:
-          if (tp.x >= 17) 
+        {
+          const bool chip_long_press = tp.x >= this->long_press_x_offset_;
+          const uint32_t duration = this->touch_active_ ? millis() - this->touch_started_at_ : 0;
+          this->touch_active_ = false;
+          this->send_long_press_time_(duration);
+
+          if (chip_long_press)
           {
-            tp.x -= 16;
-            ESP_LOGV(TAG, "Long touch - Released (x=%d)", tp.x);
+            tp.x -= this->long_press_x_offset_;
+          }
+
+          if (chip_long_press)
+          {
+            ESP_LOGV(TAG, "Long touch released (x=%u)", static_cast<unsigned>(tp.x));
             trigger_long_touch_release_.trigger(tp);
           }
           else
           {
-            ESP_LOGV(TAG, "Touch - Released (x=%d)", tp.x);
+            ESP_LOGV(TAG, "Touch released (x=%u)", static_cast<unsigned>(tp.x));
             trigger_release_.trigger(tp);
           }
           break;
+        }
 
         case EN_TOUCH_STATE_PRESS:
-          ESP_LOGV(TAG, "Touch - Pressed (x=%d)", tp.x);
+          this->touch_active_ = true;
+          this->touch_started_at_ = millis();
+          ESP_LOGV(TAG, "Touch pressed (x=%u)", static_cast<unsigned>(tp.x));
           trigger_touch_.trigger(tp);
           break;
 
         case EN_TOUCH_STATE_SWIPE_LEFT:
-          ESP_LOGV(TAG, "Swipe - Left (x=%d)", tp.x);
+          this->touch_active_ = false;
+          ESP_LOGV(TAG, "Swipe left (x=%u)", static_cast<unsigned>(tp.x));
           trigger_swipe_left_.trigger(tp);
           break;
 
         case EN_TOUCH_STATE_SWIPE_RIGHT:
-          ESP_LOGV(TAG, "Swipe - Right (x=%d)", tp.x);
+          this->touch_active_ = false;
+          ESP_LOGV(TAG, "Swipe right (x=%u)", static_cast<unsigned>(tp.x));
           trigger_swipe_right_.trigger(tp);
           break;
 
         case EN_TOUCH_STATE_MULTI_TOUCH:
-          ESP_LOGV(TAG, "Multi touch - Released");
+          this->touch_active_ = false;
+          ESP_LOGV(TAG, "Multi touch released");
           trigger_multi_touch_release_.trigger(tp);
           break;
 
         default:
+          ESP_LOGV(TAG, "Ignoring decoded touch point with state %u", static_cast<unsigned>(tp.state));
           break;
       }
     }
 
-    bool TxUltimateTouch::is_valid_data(const typeData& uart_received_bytes)
+    void TxUltimateTouch::send_long_press_time_(uint32_t duration)
     {
-      if(   EN_MAGIC_WORD_BYTE_1 != uart_received_bytes[0]
-         || EN_MAGIC_WORD_BYTE_2 != uart_received_bytes[1]
-         || EN_DEVICE_VERSION    != uart_received_bytes[2]
-         || EN_OPT_CODE          != uart_received_bytes[3])
-        return false;
+      if (duration == 0)
+        return;
 
-      int state = get_touch_state(uart_received_bytes);
-      return(   EN_TOUCH_STATE_PRESS       == state
-             || EN_TOUCH_STATE_RELEASE     == state
-             || EN_TOUCH_STATE_SWIPE_LEFT  == state
-             || EN_TOUCH_STATE_SWIPE_RIGHT == state
-             || EN_TOUCH_STATE_MULTI_TOUCH == state) &&
-           (uart_received_bytes[6] >= 0 || EN_TOUCH_STATE_MULTI_TOUCH == state);
+      ESP_LOGV(TAG, "Touch duration %u ms", static_cast<unsigned>(duration));
+      for (auto *trigger : this->long_press_time_triggers_)
+        trigger->process(duration);
     }
 
-    int TxUltimateTouch::get_touch_position_x(const typeData& uart_received_bytes)
+    void TxUltimateTouch::send_gesture_(TouchGesture gesture)
     {
-      switch (uart_received_bytes[4]) 
+      switch (gesture.state)
       {
-        case EN_TOUCH_STATE_RELEASE:
-        case EN_TOUCH_STATE_MULTI_TOUCH:
+        case EN_TOUCH_STATE_DASH:
+          ESP_LOGV(TAG, "Dash from %u to %u, distance %u",
+                   static_cast<unsigned>(gesture.from),
+                   static_cast<unsigned>(gesture.to),
+                   static_cast<unsigned>(gesture.distance));
+          if (gesture.to > gesture.from)
+            trigger_dash_right_.trigger(gesture);
+          else if (gesture.to < gesture.from)
+            trigger_dash_left_.trigger(gesture);
+          trigger_dash_.trigger(gesture);
+          break;
+
         case EN_TOUCH_STATE_SWIPE_LEFT:
         case EN_TOUCH_STATE_SWIPE_RIGHT:
-          return uart_received_bytes[5];
+          ESP_LOGV(TAG, "Swipe gesture from %u to %u",
+                   static_cast<unsigned>(gesture.from), static_cast<unsigned>(gesture.to));
+          trigger_swipe_.trigger(gesture);
+          break;
 
         default:
-          return uart_received_bytes[6];
+          break;
       }
     }
-
-    int TxUltimateTouch::get_touch_state(const typeData& uart_received_bytes)
-    {
-      int state = uart_received_bytes[4];
-
-      if(   EN_TOUCH_STATE_PRESS   == state
-         && uart_received_bytes[5] != 0)
-        state = EN_TOUCH_STATE_RELEASE;
-
-      if(   EN_TOUCH_STATE_RELEASE     == state
-         && EN_TOUCH_STATE_MULTI_TOUCH == uart_received_bytes[5])
-        state = EN_TOUCH_STATE_MULTI_TOUCH;
-
-      if (EN_TOUCH_STATE_SWIPE == state)
-      {
-        state = (EN_TOUCH_STATE_SWIPE_RIGHT == uart_received_bytes[5]) ? EN_TOUCH_STATE_SWIPE_RIGHT : 
-                (EN_TOUCH_STATE_SWIPE_LEFT  == uart_received_bytes[5]) ? EN_TOUCH_STATE_SWIPE_LEFT : state;
-      }
-      return state;
-    }
-
-    TouchPoint TxUltimateTouch::get_touch_point(const typeData& uart_received_bytes)
-    {
-      TouchPoint tp;
-      tp.x     = get_touch_position_x(uart_received_bytes);
-      tp.state = get_touch_state(uart_received_bytes);
-      return tp;
-    }
-
   } // namespace tx_ultimate_touch
 } // namespace esphome

@@ -10,10 +10,7 @@ from esphome.const import (
     CONF_PORT,
     CONF_WEB_SERVER,
     CONF_WEB_SERVER_ID,
-    PLATFORM_BK72XX,
-    PLATFORM_ESP32,
     PLATFORM_ESP8266,
-    PLATFORM_RTL87XX,
 )
 from esphome.core import CORE, coroutine_with_priority
 import esphome.final_validate as fv
@@ -37,7 +34,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_INCLUDE_INTERNAL, default=False): cv.boolean
         }
     ).extend(cv.COMPONENT_SCHEMA),
-    cv.only_on([PLATFORM_ESP32, PLATFORM_ESP8266, PLATFORM_BK72XX, PLATFORM_RTL87XX]),
+    cv.only_on([PLATFORM_ESP8266]),
 )
 
 async def add_entity_config(entity, config):

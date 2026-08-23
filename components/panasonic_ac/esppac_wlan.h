@@ -28,8 +28,8 @@ class PanasonicACWLAN : public PanasonicAC {
  public:
   void control(const climate::ClimateCall &call) override;
 
-  void on_horizontal_swing_change(const std::string &swing) override;
-  void on_vertical_swing_change(const std::string &swing) override;
+  void on_horizontal_swing_change(const StringRef &swing) override;
+  void on_vertical_swing_change(const StringRef &swing) override;
   void on_nanoex_change(bool nanoex) override;
   void on_eco_change(bool eco) override;
   void on_econavi_change(bool eco) override;
@@ -60,14 +60,6 @@ class PanasonicACWLAN : public PanasonicAC {
   void send_set_command();
   void send_command(const uint8_t *command, size_t commandLength, CommandType type = CommandType::Normal);
   void send_packet(std::vector<uint8_t> packet, CommandType type = CommandType::Normal);
-
-  climate::ClimateMode determine_mode(uint8_t mode);
-  std::string determine_fan_speed(uint8_t speed);
-  std::string determine_preset(uint8_t preset);
-  std::string determine_swing_vertical(uint8_t swing);
-  std::string determine_swing_horizontal(uint8_t swing);
-  climate::ClimateSwingMode determine_swing(uint8_t swing);
-  bool determine_nanoex(uint8_t nanoex);
 
   void handle_resend();
 

@@ -99,7 +99,7 @@ void RestServer::loop() {
 #endif
 }
 void RestServer::dump_config() {
-  ESP_LOGCONFIG(TAG, "Web Server:");
+  ESP_LOGCONFIG(TAG, "Rest Server:");
   ESP_LOGCONFIG(TAG, "  Address: %s:%u", network::get_use_address().c_str(), this->base_->get_port());
 }
 float RestServer::get_setup_priority() const { return setup_priority::WIFI - 1.0f; }
@@ -1128,7 +1128,7 @@ std::string RestServer::alarm_control_panel_json(alarm_control_panel::AlarmContr
 }
 #endif
 
-bool RestServer::canHandle(AsyncWebServerRequest *request) {
+bool RestServer::canHandle(AsyncWebServerRequest *request) const {
   if (request->url() == "/")
     return true;
 
@@ -1360,7 +1360,7 @@ void RestServer::handleRequest(AsyncWebServerRequest *request) {
   request->send(404);
 }
 
-bool RestServer::isRequestHandlerTrivial() { return false; }
+bool RestServer::isRequestHandlerTrivial() const { return false; }
 
 void RestServer::schedule_(std::function<void()> &&f) {
 #ifdef USE_ESP32

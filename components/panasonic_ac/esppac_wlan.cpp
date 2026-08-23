@@ -1,6 +1,8 @@
 #include "esppac_wlan.h"
 #include "esppac_commands_wlan.h"
 
+#include "esphome/core/log.h"
+
 namespace esphome {
 namespace panasonic_ac {
 namespace WLAN {
@@ -101,14 +103,14 @@ void PanasonicACWLAN::control(const climate::ClimateCall &call) {
   }
 
   if (call.get_target_temperature().has_value()) {
-    ESP_LOGV(TAG, "Requested temperature change");
-    set_value(0x31, *call.get_target_temperature() * 2);
+    ESP_LOGV(TAG, "Requested target temp change to %.2f, %.2f including offset", *call.get_target_temperature(), *call.get_target_temperature() - this->current_temperature_offset_);
+    set_value(0x31, (*call.get_target_temperature() - this->current_temperature_offset_) * 2);
   }
 
-  if (call.get_custom_fan_mode().has_value()) {
+  if (call.has_custom_fan_mode()) {
     ESP_LOGV(TAG, "Requested fan mode change");
 
-    std::string fanMode = *call.get_custom_fan_mode();
+    const StringRef fanMode = call.get_custom_fan_mode();
 
     if (fanMode == "Automatic") {
       set_value(0xB2, 0x41);
@@ -159,20 +161,20 @@ void PanasonicACWLAN::control(const climate::ClimateCall &call) {
     }
   }
 
-  if (call.get_custom_preset().has_value()) {
+  if (call.has_custom_preset()) {
     ESP_LOGV(TAG, "Requested preset change");
 
-    std::string preset = *call.get_custom_preset();
+    const StringRef preset = call.get_custom_preset();
 
-    if (preset.compare("Normal") == 0) {
+    if (preset == "Normal") {
       set_value(0xB2, 0x41);
       set_value(0x35, 0x42);
       set_value(0x34, 0x42);
-    } else if (preset.compare("Powerful") == 0) {
+    } else if (preset == "Powerful") {
       set_value(0xB2, 0x42);
       set_value(0x35, 0x42);
       set_value(0x34, 0x42);
-    } else if (preset.compare("Quiet") == 0) {
+    } else if (preset == "Quiet") {
       set_value(0xB2, 0x43);
       set_value(0x35, 0x42);
       set_value(0x34, 0x42);
@@ -290,7 +292,7 @@ bool PanasonicACWLAN::verify_packet() {
  * Field handling
  */
 
-climate::ClimateMode PanasonicACWLAN::determine_mode(uint8_t mode) {
+static climate::ClimateMode determine_mode(uint8_t mode) {
   switch (mode)  // Check mode
   {
     case 0x41:  // Auto
@@ -309,7 +311,7 @@ climate::ClimateMode PanasonicACWLAN::determine_mode(uint8_t mode) {
   }
 }
 
-std::string PanasonicACWLAN::determine_fan_speed(uint8_t speed) {
+static const char *determine_fan_speed(uint8_t speed) {
   switch (speed) {
     case 0x32:  // 1
       return "1";
@@ -329,7 +331,7 @@ std::string PanasonicACWLAN::determine_fan_speed(uint8_t speed) {
   }
 }
 
-std::string PanasonicACWLAN::determine_preset(uint8_t preset) {
+static const char *determine_preset(uint8_t preset) {
   switch (preset) {
     case 0x43:  // Quiet
       return "Quiet";
@@ -343,7 +345,7 @@ std::string PanasonicACWLAN::determine_preset(uint8_t preset) {
   }
 }
 
-std::string PanasonicACWLAN::determine_swing_vertical(uint8_t swing) {
+static const char *determine_swing_vertical(uint8_t swing) {
   switch (swing) {
     case 0x42:  // Down
       return "down";
@@ -361,7 +363,7 @@ std::string PanasonicACWLAN::determine_swing_vertical(uint8_t swing) {
   }
 }
 
-std::string PanasonicACWLAN::determine_swing_horizontal(uint8_t swing) {
+static const char *determine_swing_horizontal(uint8_t swing) {
   switch (swing) {
     case 0x42:  // Left
       return "left";
@@ -379,7 +381,7 @@ std::string PanasonicACWLAN::determine_swing_horizontal(uint8_t swing) {
   }
 }
 
-climate::ClimateSwingMode PanasonicACWLAN::determine_swing(uint8_t swing) {
+static climate::ClimateSwingMode determine_swing(uint8_t swing) {
   switch (swing) {
     case 0x41:  // Both
       return climate::CLIMATE_SWING_BOTH;
@@ -395,7 +397,7 @@ climate::ClimateSwingMode PanasonicACWLAN::determine_swing(uint8_t swing) {
   }
 }
 
-bool PanasonicACWLAN::determine_nanoex(uint8_t nanoex) {
+static constexpr bool determine_nanoex(uint8_t nanoex) {
   switch (nanoex) {
     case 0x42:
       return false;
@@ -432,8 +434,8 @@ void PanasonicACWLAN::handle_packet() {
     update_current_temperature((int8_t) this->rx_buffer_[62]);
     update_outside_temperature((int8_t) this->rx_buffer_[66]);  // Set current (outside) temperature
 
-    std::string horizontalSwing = determine_swing_horizontal(this->rx_buffer_[34]);
-    std::string verticalSwing = determine_swing_vertical(this->rx_buffer_[38]);
+    StringRef horizontalSwing(determine_swing_horizontal(this->rx_buffer_[34]));
+    StringRef verticalSwing(determine_swing_vertical(this->rx_buffer_[38]));
 
     update_swing_horizontal(horizontalSwing);
     update_swing_vertical(verticalSwing);
@@ -442,8 +444,8 @@ void PanasonicACWLAN::handle_packet() {
 
     update_nanoex(nanoex);
 
-    this->custom_fan_mode = determine_fan_speed(this->rx_buffer_[26]);
-    this->custom_preset = determine_preset(this->rx_buffer_[42]);
+    this->set_custom_fan_mode_(determine_fan_speed(this->rx_buffer_[26]));
+    this->set_custom_preset_(determine_preset(this->rx_buffer_[42]));
 
     this->swing_mode = determine_swing(this->rx_buffer_[30]);
 
@@ -501,11 +503,11 @@ void PanasonicACWLAN::handle_packet() {
           break;
         case 0xA0:  // Fan speed
           ESP_LOGV(TAG, "Received fan speed");
-          this->custom_fan_mode = determine_fan_speed(this->rx_buffer_[currentIndex + 2]);
+          this->set_custom_fan_mode_(determine_fan_speed(this->rx_buffer_[currentIndex + 2]));
           break;
-        case 0xB2: // Preset
+        case 0xB2:  // Preset
           ESP_LOGV(TAG, "Received preset");
-          this->custom_preset = determine_preset(this->rx_buffer_[currentIndex + 2]);
+          this->set_custom_preset_(determine_preset(this->rx_buffer_[currentIndex + 2]));
           break;
         case 0xA1:
           ESP_LOGV(TAG, "Received swing mode");
@@ -514,12 +516,12 @@ void PanasonicACWLAN::handle_packet() {
         case 0xA5:  // Horizontal swing position
           ESP_LOGV(TAG, "Received horizontal swing position");
 
-          update_swing_horizontal(determine_swing_horizontal(this->rx_buffer_[currentIndex + 2]));
+          update_swing_horizontal(StringRef(determine_swing_horizontal(this->rx_buffer_[currentIndex + 2])));
           break;
         case 0xA4:  // Vertical swing position
           ESP_LOGV(TAG, "Received vertical swing position");
 
-          update_swing_vertical(determine_swing_vertical(this->rx_buffer_[currentIndex + 2]));
+          update_swing_vertical(StringRef(determine_swing_vertical(this->rx_buffer_[currentIndex + 2])));
           break;
         case 0x33:  // nanoex mode
           ESP_LOGV(TAG, "Received nanoex state");
@@ -739,7 +741,7 @@ void PanasonicACWLAN::set_value(uint8_t key, uint8_t value) {
  * Sensor handling
  */
 
-void PanasonicACWLAN::on_vertical_swing_change(const std::string &swing) {
+void PanasonicACWLAN::on_vertical_swing_change(const StringRef& swing) {
   if (this->state_ != ACState::Ready)
     return;
 
@@ -759,7 +761,7 @@ void PanasonicACWLAN::on_vertical_swing_change(const std::string &swing) {
   send_set_command();
 }
 
-void PanasonicACWLAN::on_horizontal_swing_change(const std::string &swing) {
+void PanasonicACWLAN::on_horizontal_swing_change(const StringRef &swing) {
   if (this->state_ != ACState::Ready)
     return;
 

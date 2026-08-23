@@ -217,11 +217,11 @@ class RestServer : public Controller, public Component, public AsyncWebHandler {
 #endif
 
   /// Override the web handler's canHandle method.
-  bool canHandle(AsyncWebServerRequest *request) override;
+  bool canHandle(AsyncWebServerRequest *request) const override;
   /// Override the web handler's handleRequest method.
   void handleRequest(AsyncWebServerRequest *request) override;
   /// This web handle is not trivial.
-  bool isRequestHandlerTrivial() override;  // NOLINT(readability-identifier-naming)
+  bool isRequestHandlerTrivial() const override;  // NOLINT(readability-identifier-naming)
 
   void add_entity_config(EntityBase *entity, float weight, uint64_t group);
   void add_sorting_group(uint64_t group_id, const std::string &group_name, float weight);
