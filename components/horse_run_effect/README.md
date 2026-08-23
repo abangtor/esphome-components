@@ -21,9 +21,34 @@ light:
           reverse: false
           target: current
           on_finished:
-            - light.turn_on:
-                id: my_light
-                effect: "None"
+            - script.execute: on_horse_run_end_on
+
+      - horse_run:
+          name: "Horse Run On Invers"
+          update_interval: 5ms
+          fade_steps: 5
+          reverse: true
+          target: current
+          on_finished:
+            - script.execute: on_horse_run_end_on
+
+      - horse_run:
+          name: "Horse Run Off"
+          update_interval: 5ms
+          fade_steps: 5
+          reverse: false
+          target: black
+          on_finished:
+            - script.execute: on_horse_run_end_off
+
+      - horse_run:
+          name: "Horse Run Off Invers"
+          update_interval: 5ms
+          fade_steps: 5
+          reverse: true
+          target: black
+          on_finished:
+            - script.execute: on_horse_run_end_off
 ```
 
 `target` can be `current` or `black`.
