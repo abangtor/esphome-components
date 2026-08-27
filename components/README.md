@@ -1,9 +1,6 @@
 Custom Components
 =================
 
-* *panasonic_ac*  
-  https://github.com/DomiStyle/esphome-panasonic-ac
-
 * *horse_run_effect*
   Addressable light wipe effect with configurable fade window and finish callback.
 
@@ -25,6 +22,3 @@ Custom Components
         then:
           - switch.turn_on: relay_2
   ```
-
-* *web_handler*  
-  https://github.com/ssieb/esphome_components/tree/master/components/web_handler

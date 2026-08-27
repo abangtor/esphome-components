@@ -17,9 +17,7 @@ List every component required by the device under `components`.
 
 - `channel_partition` - Exposes selected RGB/RGBW channels from an addressable strip as logical monochrome addressable pixels.
 - `horse_run_effect` - Addressable light wipe effect with configurable fade window and finish callback.
-- `panasonic_ac` - Panasonic air conditioner climate component.
 - `tx_ultimate_touch` - Sonoff TX Ultimate touch panel support.
-- `web_handler` - Lightweight custom web request handler.
 
 The repository follows ESPHome's external component layout:
 
