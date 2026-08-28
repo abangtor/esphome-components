@@ -17,10 +17,18 @@ void HorseRunEffect::start() {
 
 void HorseRunEffect::apply(light::AddressableLight &it, const Color &current_color) {
   const uint32_t now = millis();
-  if (!this->initial_run_ && now - this->last_run_ < this->update_interval_)
-    return;
+  if (this->initial_run_ || this->update_interval_ == 0) {
+    this->last_run_ = now;
+  } else {
+    const uint32_t elapsed = now - this->last_run_;
+    if (elapsed < this->update_interval_)
+      return;
 
-  this->last_run_ = now;
+    this->last_run_ += this->update_interval_;
+    if (now - this->last_run_ >= this->update_interval_)
+      this->last_run_ = now;
+  }
+
   const Color target = this->target_black_ ? Color::BLACK : current_color;
   if (this->apply_direction_(it, target, this->initial_run_)) {
     ESP_LOGI(TAG,
