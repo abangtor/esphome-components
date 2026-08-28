@@ -1,12 +1,16 @@
 #include "horse_run_effect.h"
+#include "esphome/core/log.h"
 
 namespace esphome::horse_run_effect {
+
+static const char *const TAG = "horse_run_effect";
 
 void HorseRunEffect::start() {
   this->pos_ = 0;
   this->end_ = false;
   this->initial_run_ = true;
   this->last_run_ = 0;
+  this->start_millis_ = millis();
 }
 
 void HorseRunEffect::apply(light::AddressableLight &it, const Color &current_color) {
@@ -16,8 +20,13 @@ void HorseRunEffect::apply(light::AddressableLight &it, const Color &current_col
 
   this->last_run_ = now;
   const Color target = this->target_black_ ? Color::BLACK : current_color;
-  if (this->apply_direction_(it, target, this->initial_run_))
+  if (this->apply_direction_(it, target, this->initial_run_)) {
+    ESP_LOGI(TAG, "Horse Run finished in %u ms (interval=%u ms, fade_steps=%u, reverse=%s, target=%s)",
+             static_cast<unsigned>(now - this->start_millis_), static_cast<unsigned>(this->update_interval_),
+             static_cast<unsigned>(this->fade_steps_), this->reverse_ ? "true" : "false",
+             this->target_black_ ? "black" : "current");
     this->finished_trigger_.trigger();
+  }
 
   this->initial_run_ = false;
   it.schedule_show();
