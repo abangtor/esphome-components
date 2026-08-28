@@ -16,7 +16,7 @@ light:
     effects:
       - horse_run:
           name: "Horse Run On"
-          update_interval: 5ms
+          update_interval: 10ms
           fade_steps: 5
           reverse: false
           target: current
@@ -25,7 +25,7 @@ light:
 
       - horse_run:
           name: "Horse Run On Invers"
-          update_interval: 5ms
+          update_interval: 10ms
           fade_steps: 5
           reverse: true
           target: current
@@ -34,7 +34,7 @@ light:
 
       - horse_run:
           name: "Horse Run Off"
-          update_interval: 5ms
+          update_interval: 10ms
           fade_steps: 5
           reverse: false
           target: black
@@ -43,7 +43,7 @@ light:
 
       - horse_run:
           name: "Horse Run Off Invers"
-          update_interval: 5ms
+          update_interval: 10ms
           fade_steps: 5
           reverse: true
           target: black
