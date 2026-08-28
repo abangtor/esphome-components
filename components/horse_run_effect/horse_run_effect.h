@@ -31,6 +31,8 @@ class HorseRunEffect : public light::AddressableLightEffect {
   bool target_black_{false};
   uint32_t last_run_{0};
   uint32_t start_millis_{0};
+  uint32_t led_count_{0};
+  uint32_t total_steps_{0};
   uint32_t pos_{0};
   bool end_{false};
   bool initial_run_{true};

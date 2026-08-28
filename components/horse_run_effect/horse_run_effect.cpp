@@ -11,6 +11,8 @@ void HorseRunEffect::start() {
   this->initial_run_ = true;
   this->last_run_ = 0;
   this->start_millis_ = millis();
+  this->led_count_ = 0;
+  this->total_steps_ = 0;
 }
 
 void HorseRunEffect::apply(light::AddressableLight &it, const Color &current_color) {
@@ -21,8 +23,11 @@ void HorseRunEffect::apply(light::AddressableLight &it, const Color &current_col
   this->last_run_ = now;
   const Color target = this->target_black_ ? Color::BLACK : current_color;
   if (this->apply_direction_(it, target, this->initial_run_)) {
-    ESP_LOGI(TAG, "Horse Run finished in %u ms (interval=%u ms, fade_steps=%u, reverse=%s, target=%s)",
-             static_cast<unsigned>(now - this->start_millis_), static_cast<unsigned>(this->update_interval_),
+    ESP_LOGI(TAG,
+             "Horse Run finished in %u ms (leds=%u, steps=%u, interval=%u ms, fade_steps=%u, reverse=%s, "
+             "target=%s)",
+             static_cast<unsigned>(now - this->start_millis_), static_cast<unsigned>(this->led_count_),
+             static_cast<unsigned>(this->total_steps_), static_cast<unsigned>(this->update_interval_),
              static_cast<unsigned>(this->fade_steps_), this->reverse_ ? "true" : "false",
              this->target_black_ ? "black" : "current");
     this->finished_trigger_.trigger();
@@ -59,6 +64,8 @@ bool HorseRunEffect::apply_direction_(light::AddressableLight &it, const Color &
 
   const uint8_t fade_steps = this->fade_steps_ == 0 ? 1 : this->fade_steps_;
   const uint32_t size = it.size();
+  this->led_count_ = size;
+  this->total_steps_ = size == 0 ? 0 : size + fade_steps - 1;
   if (size == 0) {
     this->end_ = true;
     return true;
