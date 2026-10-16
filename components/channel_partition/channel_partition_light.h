@@ -87,7 +87,10 @@ class ChannelPartitionLightOutput final : public light::AddressableLight {
         const int32_t src_led = seg.get_src_offset() + (flat_src_off / seg.channel_count());
         const uint8_t channel = seg.channel_at(flat_src_off % seg.channel_count());
         auto src_view = (*seg.get_src())[src_led];
-        src_view.raw_set_color_correction(&this->correction_);
+        // pixels_ already contains brightness/gamma-corrected bytes. Copy them
+        // unchanged: applying either partition or source correction again would
+        // dim them twice (and the source light may itself be logically off).
+        src_view.raw_set_color_correction(&this->copy_correction_);
         const uint8_t value = this->mono_value_(this->pixels_[seg.get_dst_offset() + dst_off]);
 
         switch (channel) {
@@ -122,6 +125,8 @@ class ChannelPartitionLightOutput final : public light::AddressableLight {
     return std::max(std::max(pixel.red, pixel.green), std::max(pixel.blue, pixel.white));
   }
 
+  // Default correction is identity (full brightness, no gamma table).
+  light::ESPColorCorrection copy_correction_{};
   mutable std::vector<ChannelPartitionPixel> pixels_;
   std::vector<ChannelPartitionSegment> segments_;
 };
